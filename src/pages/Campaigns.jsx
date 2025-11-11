@@ -1,272 +1,216 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState([]);
   const [clients, setClients] = useState([]);
-  const [form, setForm] = useState({
+  const [newCampaign, setNewCampaign] = useState({
     name: "",
     platform: "",
     budget: "",
     revenue: "",
-    ongoing: false,
+    status: "Ongoing",
     start_date: "",
     end_date: "",
     client_id: "",
   });
-  const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  // Load campaigns and clients
   useEffect(() => {
-    fetchClients();
     fetchCampaigns();
+    fetchClients();
   }, []);
 
+  // Fetch all clients for dropdown
   async function fetchClients() {
     const { data, error } = await supabase.from("clients").select("id, name");
     if (error) console.error("Error fetching clients:", error);
-    else setClients(data || []);
+    else setClients(data);
   }
 
+  // Fetch all campaigns with client names
   async function fetchCampaigns() {
+    setLoading(true);
     const { data, error } = await supabase
       .from("campaigns")
-      .select("id, name, platform, budget, revenue, ongoing, start_date, end_date, clients(name)")
-      .order("id", { ascending: false });
-    if (error) console.error("Error fetching campaigns:", error);
-    else setCampaigns(data || []);
+      .select("id, name, platform, budget, revenue, status, start_date, end_date, clients(name)")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching campaigns:", error);
+    } else {
+      setCampaigns(
+        data.map((c) => ({
+          ...c,
+          client_name: c.clients?.name || "Unknown",
+        }))
+      );
+    }
+    setLoading(false);
   }
 
-  async function handleSubmit(e) {
+  // Add a new campaign
+  async function addCampaign(e) {
     e.preventDefault();
 
-    const campaignData = {
-      name: form.name.trim(),
-      platform: form.platform.trim(),
-      budget: parseFloat(form.budget) || 0,
-      revenue: form.ongoing ? null : parseFloat(form.revenue) || 0,
-      ongoing: form.ongoing,
-      start_date: form.start_date || null,
-      end_date: form.end_date || null,
-      client_id: form.client_id,
-    };
-
-    if (editingId) {
-      const { error } = await supabase
-        .from("campaigns")
-        .update(campaignData)
-        .eq("id", editingId);
-      if (error) console.error("Error updating campaign:", error);
-    } else {
-      const { error } = await supabase.from("campaigns").insert([campaignData]);
-      if (error) console.error("Error adding campaign:", error);
+    const { name, platform, budget, revenue, status, start_date, end_date, client_id } = newCampaign;
+    if (!name || !platform || !budget || !start_date || !client_id) {
+      alert("Please fill in all required fields.");
+      return;
     }
 
-    resetForm();
-    fetchCampaigns();
-  }
+    const insertData = {
+      name,
+      platform,
+      budget: parseFloat(budget),
+      revenue: status === "Ongoing" ? null : parseFloat(revenue || 0),
+      status,
+      start_date,
+      end_date: end_date || null,
+      client_id,
+    };
 
-  function resetForm() {
-    setForm({
-      name: "",
-      platform: "",
-      budget: "",
-      revenue: "",
-      ongoing: false,
-      start_date: "",
-      end_date: "",
-      client_id: "",
-    });
-    setEditingId(null);
-  }
-
-  function handleEdit(campaign) {
-    setForm({
-      name: campaign.name,
-      platform: campaign.platform,
-      budget: campaign.budget,
-      revenue: campaign.revenue || "",
-      ongoing: campaign.ongoing,
-      start_date: campaign.start_date || "",
-      end_date: campaign.end_date || "",
-      client_id: campaign.client_id,
-    });
-    setEditingId(campaign.id);
-  }
-
-  async function handleDelete(id) {
-    const { error } = await supabase.from("campaigns").delete().eq("id", id);
-    if (error) console.error("Error deleting campaign:", error);
-    fetchCampaigns();
+    const { error } = await supabase.from("campaigns").insert([insertData]);
+    if (error) {
+      console.error("Error adding campaign:", error);
+      alert("Failed to add campaign.");
+    } else {
+      alert("Campaign added successfully!");
+      setNewCampaign({
+        name: "",
+        platform: "",
+        budget: "",
+        revenue: "",
+        status: "Ongoing",
+        start_date: "",
+        end_date: "",
+        client_id: "",
+      });
+      fetchCampaigns();
+    }
   }
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Campaigns</h2>
+      <h1 className="text-2xl font-semibold mb-4">Campaigns</h1>
 
-      {/* Campaign Form */}
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-6 rounded-xl shadow-sm mb-8 space-y-4"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <input
-            type="text"
-            placeholder="Campaign Name"
-            className="border p-2 rounded-lg w-full"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Platform"
-            className="border p-2 rounded-lg w-full"
-            value={form.platform}
-            onChange={(e) => setForm({ ...form, platform: e.target.value })}
-            required
-          />
-          <input
-            type="number"
-            placeholder="Budget"
-            className="border p-2 rounded-lg w-full"
-            value={form.budget}
-            onChange={(e) => setForm({ ...form, budget: e.target.value })}
-            required
-          />
-          <input
-            type="number"
-            placeholder="Revenue"
-            className="border p-2 rounded-lg w-full disabled:bg-gray-100"
-            value={form.revenue}
-            onChange={(e) => setForm({ ...form, revenue: e.target.value })}
-            disabled={form.ongoing}
-          />
-          <label className="flex items-center space-x-2 col-span-1 md:col-span-3">
-            <input
-              type="checkbox"
-              checked={form.ongoing}
-              onChange={(e) => setForm({ ...form, ongoing: e.target.checked })}
-            />
-            <span>Ongoing Campaign</span>
-          </label>
-          <input
-            type="date"
-            className="border p-2 rounded-lg w-full"
-            value={form.start_date}
-            onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-            required
-          />
-          <input
-            type="date"
-            className="border p-2 rounded-lg w-full"
-            value={form.end_date}
-            onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-            placeholder="End Date"
-          />
-          <select
-            className="border p-2 rounded-lg w-full"
-            value={form.client_id}
-            onChange={(e) => setForm({ ...form, client_id: e.target.value })}
-            required
-          >
-            <option value="">Select Client</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Add Campaign Form */}
+      <form onSubmit={addCampaign} className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 bg-white p-4 rounded-lg shadow">
+        <input
+          type="text"
+          placeholder="Campaign Name"
+          value={newCampaign.name}
+          onChange={(e) => setNewCampaign({ ...newCampaign, name: e.target.value })}
+          className="p-2 border rounded w-full"
+          required
+        />
+        <input
+          type="text"
+          placeholder="Platform"
+          value={newCampaign.platform}
+          onChange={(e) => setNewCampaign({ ...newCampaign, platform: e.target.value })}
+          className="p-2 border rounded w-full"
+          required
+        />
+        <input
+          type="number"
+          placeholder="Budget"
+          value={newCampaign.budget}
+          onChange={(e) => setNewCampaign({ ...newCampaign, budget: e.target.value })}
+          className="p-2 border rounded w-full"
+          required
+        />
+        <input
+          type="number"
+          placeholder="Revenue"
+          value={newCampaign.revenue}
+          onChange={(e) => setNewCampaign({ ...newCampaign, revenue: e.target.value })}
+          className="p-2 border rounded w-full"
+          disabled={newCampaign.status === "Ongoing"}
+        />
 
-        <div className="flex space-x-4 mt-4">
-          <button
-            type="submit"
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-          >
-            {editingId ? "Update Campaign" : "Add Campaign"}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 transition"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
+        <select
+          value={newCampaign.status}
+          onChange={(e) => setNewCampaign({ ...newCampaign, status: e.target.value })}
+          className="p-2 border rounded w-full"
+        >
+          <option value="Ongoing">Ongoing</option>
+          <option value="Completed">Completed</option>
+        </select>
+
+        <select
+          value={newCampaign.client_id}
+          onChange={(e) => setNewCampaign({ ...newCampaign, client_id: e.target.value })}
+          className="p-2 border rounded w-full"
+          required
+        >
+          <option value="">Select Client</option>
+          {clients.map((client) => (
+            <option key={client.id} value={client.id}>
+              {client.name}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="date"
+          value={newCampaign.start_date}
+          onChange={(e) => setNewCampaign({ ...newCampaign, start_date: e.target.value })}
+          className="p-2 border rounded w-full"
+          required
+        />
+        <input
+          type="date"
+          value={newCampaign.end_date}
+          onChange={(e) => setNewCampaign({ ...newCampaign, end_date: e.target.value })}
+          className="p-2 border rounded w-full"
+          placeholder="End Date (optional)"
+        />
+
+        <button
+          type="submit"
+          className="col-span-1 md:col-span-2 bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
+        >
+          Add Campaign
+        </button>
       </form>
 
-      {/* Campaign Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse border border-gray-200 rounded-lg shadow-sm text-sm md:text-base">
-          <thead className="bg-gray-100 text-gray-700">
-            <tr>
-              {[
-                "Name",
-                "Client",
-                "Platform",
-                "Budget",
-                "Revenue",
-                "Ongoing",
-                "Start Date",
-                "End Date",
-                "Actions",
-              ].map((header) => (
-                <th key={header} className="border p-3 text-left whitespace-nowrap">
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
-                <td className="border p-3">{c.name}</td>
-                <td className="border p-3">{c.clients?.name || "N/A"}</td>
-                <td className="border p-3">{c.platform}</td>
-                <td className="border p-3">${c.budget}</td>
-                <td className="border p-3">
-                  {c.ongoing ? "—" : `$${c.revenue || 0}`}
-                </td>
-                <td className="border p-3">
-                  {c.ongoing ? "Yes" : "No"}
-                </td>
-                <td className="border p-3 whitespace-nowrap">
-                  {c.start_date || "—"}
-                </td>
-                <td className="border p-3 whitespace-nowrap">
-                  {c.end_date || "—"}
-                </td>
-                <td className="border p-3 flex flex-wrap gap-2 justify-start">
-                  <button
-                    onClick={() => handleEdit(c)}
-                    className="bg-yellow-500 text-white px-3 py-1 rounded-lg hover:bg-yellow-600"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(c.id)}
-                    className="bg-red-500 text-white px-3 py-1 rounded-lg hover:bg-red-600"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {campaigns.length === 0 && (
+      {/* Campaigns Table */}
+      <div className="overflow-x-auto bg-white rounded-lg shadow">
+        {loading ? (
+          <p className="p-4">Loading campaigns...</p>
+        ) : campaigns.length === 0 ? (
+          <p className="p-4">No campaigns found.</p>
+        ) : (
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-gray-100 text-left">
               <tr>
-                <td
-                  colSpan="9"
-                  className="text-center p-4 text-gray-500"
-                >
-                  No campaigns found.
-                </td>
+                <th className="p-3 border">Campaign Name</th>
+                <th className="p-3 border">Platform</th>
+                <th className="p-3 border">Client</th>
+                <th className="p-3 border">Budget</th>
+                <th className="p-3 border">Revenue</th>
+                <th className="p-3 border">Status</th>
+                <th className="p-3 border">Start Date</th>
+                <th className="p-3 border">End Date</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {campaigns.map((c) => (
+                <tr key={c.id} className="hover:bg-gray-50">
+                  <td className="p-3 border">{c.name}</td>
+                  <td className="p-3 border">{c.platform}</td>
+                  <td className="p-3 border">{c.client_name}</td>
+                  <td className="p-3 border">${c.budget}</td>
+                  <td className="p-3 border">{c.revenue ? `$${c.revenue}` : "-"}</td>
+                  <td className="p-3 border">{c.status}</td>
+                  <td className="p-3 border">{c.start_date}</td>
+                  <td className="p-3 border">{c.end_date || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
